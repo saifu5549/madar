@@ -1,0 +1,135 @@
+{
+    "header": {
+        "title": "Madarsa Directory",
+        "subtitle": "India's Largest Madarsa Network",
+        "home": "Home",
+        "allMadarsas": "All Madarsas",
+        "about": "About",
+        "login": "Login",
+        "addMadarsa": "Add Your Madarsa"
+    },
+    "hero": {
+        "badge": "India's Largest Madarsa Directory",
+        "title": "Connecting",
+        "titleHighlight": "Islamic Education",
+        "titleEnd": "Across India",
+        "subtitle": "Discover madarsas near you, explore their programs, and connect with institutions dedicated to Islamic learning and spiritual growth.",
+        "browseMadarsas": "Browse Madarsas",
+        "addYourMadarsa": "Add Your Madarsa",
+        "statsCountMadarsas": "Madarsas",
+        "statsCountStudents": "Students",
+        "statsCountTeachers": "Teachers"
+    },
+    "features": {
+        "title": "For Every User",
+        "subtitle": "Whether you are a Mohtamim, Ustaad, or Student/Parent, our platform is for everyone",
+        "mohatmin": {
+            "title": "Mohtamim",
+            "subtitle": "Administrators",
+            "feature1": "Register your madarsa online",
+            "feature2": "Manage teachers and students",
+            "feature3": "Upload exams and results",
+            "feature4": "Digitize complete madarsa information",
+            "cta": "Get Started"
+        },
+        "ustaad": {
+            "title": "Ustaad",
+            "subtitle": "Teachers",
+            "feature1": "Create your profile and join a madarsa",
+            "feature2": "Mark student attendance online",
+            "feature3": "Upload results and marks",
+            "feature4": "Manage your classes",
+            "cta": "Login"
+        },
+        "talib": {
+            "title": "Students / Parents",
+            "subtitle": "Students / Parents",
+            "feature1": "Find madarsas in your city",
+            "feature2": "Enroll your children",
+            "feature3": "View attendance and results online",
+            "feature4": "Get complete education information",
+            "cta": "Find Madarsa"
+        }
+    },
+    "findMadarsa": {
+        "title": "Find a Madarsa",
+        "subtitle": "Search from hundreds of registered madarsas across India. Filter by state, city, or search by name.",
+        "searchPlaceholder": "Search by madarsa name or city...",
+        "selectState": "Select State",
+        "selectCity": "Select City",
+        "allStates": "All States",
+        "allCities": "All Cities",
+        "clearFilters": "Clear Filters",
+        "showing": "Showing",
+        "madarsas": "madarsas",
+        "viewAll": "View All",
+        "noResults": "No Madarsas Found",
+        "noResultsDesc": "Try adjusting your search or filters to find what you're looking for."
+    },
+    "cta": {
+        "title": "Want to Add Your Madarsa?",
+        "subtitle": "Join India's largest madarsa directory. Digitize your institution, manage students, teachers, and bring transparency to Islamic education.",
+        "button": "Add Your Madarsa Now"
+    },
+    "footer": {
+        "about": "About",
+        "contact": "Contact",
+        "privacy": "Privacy Policy",
+        "terms": "Terms of Service",
+        "copyright": "All rights reserved."
+    },
+    "auth": {
+        "backToHome": "Back to Home",
+        "welcomeBack": "Welcome Back",
+        "addYourMadarsa": "Add Your Madarsa",
+        "signInDesc": "Sign in to manage your madarsa",
+        "registerDesc": "Register your madarsa and become a Super Admin",
+        "yourFullName": "Your Full Name",
+        "namePlaceholder": "Enter your name",
+        "madarsaName": "Madarsa Name",
+        "madarsaNamePlaceholder": "Enter madarsa name",
+        "emailAddress": "Email Address",
+        "emailPlaceholder": "Enter your email",
+        "password": "Password",
+        "passwordPlaceholder": "Enter your password",
+        "signIn": "Sign In",
+        "registerMadarsa": "Register Madarsa",
+        "dontHaveAccount": "Don't have an account?",
+        "alreadyHaveAccount": "Already have an account?",
+        "register": "Register",
+        "benefitsTitle": "What you get as Super Admin:",
+        "benefit1": "Full control over your madarsa profile",
+        "benefit2": "Add teachers, students & staff",
+        "benefit3": "Manage classes, exams & results",
+        "benefit4": "Assign additional admins",
+        "heroTitle": "Digitize Your Madarsa",
+        "heroDesc": "Join hundreds of madarsas across India. Bring transparency, efficiency, and modern management to your institution."
+    },
+    "madarsaDetail": {
+        "notFound": "Madarsa Not Found",
+        "notFoundDesc": "The madarsa you're looking for doesn't exist or has been removed.",
+        "backToHome": "Back to Home",
+        "backToAll": "Back to All Madarsas",
+        "verified": "Verified",
+        "established": "Est.",
+        "totalStudents": "Total Students",
+        "teachers": "Teachers",
+        "staffMembers": "Staff Members",
+        "classesOffered": "Classes Offered",
+        "contactInfo": "Contact Information",
+        "address": "Address",
+        "phone": "Phone",
+        "email": "Email"
+    },
+    "common": {
+        "loading": "Loading...",
+        "save": "Save",
+        "cancel": "Cancel",
+        "edit": "Edit",
+        "delete": "Delete",
+        "back": "Back",
+        "next": "Next",
+        "submit": "Submit",
+        "search": "Search"
+    }
+}

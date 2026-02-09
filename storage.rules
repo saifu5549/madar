@@ -1,0 +1,45 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Helper function to check if user is authenticated
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    // Helper function to check if file size is acceptable (5MB limit)
+    function isValidSize() {
+      return request.resource.size < 5 * 1024 * 1024;
+    }
+    
+    // Helper function to check if file is an image
+    function isImage() {
+      return request.resource.contentType.matches('image/.*');
+    }
+    
+    // Madarsa Images (logos, photos)
+    match /madarsa-images/{madarsaId}/{allPaths=**} {
+      // Only authenticated users can upload
+      allow read: if true; // Public read for displaying images
+      allow write: if isSignedIn() && isValidSize() && isImage();
+    }
+    
+    // Student/Teacher Profile Photos
+    match /profile-photos/{userId}/{allPaths=**} {
+      allow read: if true; // Public read
+      allow write: if isSignedIn() && request.auth.uid == userId && isValidSize() && isImage();
+    }
+    
+    // Documents/Certificates
+    match /documents/{madarsaId}/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isValidSize();
+    }
+    
+    // Default deny all
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
