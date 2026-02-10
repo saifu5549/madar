@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -43,9 +42,10 @@ interface EditMadarsaModalProps {
     isOpen: boolean;
     onClose: () => void;
     onUpdate: () => void;
+    defaultTab?: string;
 }
 
-export function EditMadarsaModal({ madarsa, isOpen, onClose, onUpdate }: EditMadarsaModalProps) {
+export function EditMadarsaModal({ madarsa, isOpen, onClose, onUpdate, defaultTab = "basic" }: EditMadarsaModalProps) {
     const { toast } = useToast();
     const [loading, setLoading] = useState(false);
     const [logoFile, setLogoFile] = useState<File | null>(null);
@@ -156,7 +156,8 @@ export function EditMadarsaModal({ madarsa, isOpen, onClose, onUpdate }: EditMad
                 "mohatmim.name": data.mohatmimName,
                 "media.logo": logoUrl,
                 "media.coverPhoto": coverUrl,
-                "facilities": facilities
+                "facilities": facilities,
+                "meta.updatedAt": Date.now()
             });
 
             toast({
@@ -204,7 +205,7 @@ export function EditMadarsaModal({ madarsa, isOpen, onClose, onUpdate }: EditMad
 
                 <ScrollArea className="flex-grow">
                     <form onSubmit={form.handleSubmit(onSubmit)} className="p-6 pt-2">
-                        <Tabs defaultValue="basic" className="w-full">
+                        <Tabs defaultValue={defaultTab} className="w-full">
                             <TabsList className="mb-4 flex-wrap h-auto">
                                 <TabsTrigger value="basic">Basic Info</TabsTrigger>
                                 <TabsTrigger value="media">Media & Images</TabsTrigger>

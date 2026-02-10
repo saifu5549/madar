@@ -1,26 +1,19 @@
 [
     {
         "origin": [
-            "http://localhost:8080",
-            "http://localhost:5173",
-            "http://localhost:3000",
-            "*"
+            "http://localhost:8080"
         ],
         "method": [
             "GET",
-            "PUT",
             "POST",
+            "PUT",
             "DELETE",
-            "HEAD",
-            "OPTIONS"
+            "HEAD"
         ],
-        "maxAgeSeconds": 3600,
         "responseHeader": [
             "Content-Type",
-            "Authorization",
-            "Content-Length",
-            "User-Agent",
             "x-goog-resumable"
-        ]
+        ],
+        "maxAgeSeconds": 3600
     }
 ]
