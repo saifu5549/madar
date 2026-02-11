@@ -28,6 +28,7 @@ export interface Madarsa {
   meta?: {
     status: 'pending' | 'verified' | 'rejected';
     createdBy: string;
+    staffUids?: string[];
     updatedAt: number;
   };
   description?: {

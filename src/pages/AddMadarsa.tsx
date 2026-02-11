@@ -296,8 +296,10 @@ const AddMadarsa = () => {
                 meta: {
                     createdAt: serverTimestamp(),
                     createdBy: user.uid,
+                    staffUids: [],
                     verified: false,
                     status: "pending",
+                    updatedAt: Date.now(),
                 },
             };
 

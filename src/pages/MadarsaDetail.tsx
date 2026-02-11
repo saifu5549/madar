@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom"; // Added useNavigate
 import {
   ArrowLeft, MapPin, Phone, Mail, Calendar, Users,
-  GraduationCap, BookOpen, BadgeCheck, Building2, Loader2, Edit3
+  GraduationCap, BookOpen, BadgeCheck, Building2, Loader2, Edit3,
+  User as UserIcon, Book, Camera
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import Header from "@/components/Header";
@@ -10,13 +11,24 @@ import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { db } from "@/lib/firebase";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, collection, getDocs, query, where } from "firebase/firestore"; // Combined firestore imports
+import { useToast } from "@/components/ui/use-toast"; // Added useToast
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 const MadarsaDetail = () => {
   const { id } = useParams();
   const { user } = useAuth();
   const [madarsa, setMadarsa] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [staffList, setStaffList] = useState<any[]>([]); // Added staffList state
+  const { toast } = useToast(); // Initialized useToast
+  const navigate = useNavigate(); // Initialized useNavigate
+  const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchMadarsa = async () => {
@@ -24,8 +36,24 @@ const MadarsaDetail = () => {
       try {
         const docRef = doc(db, "madarsas", id);
         const docSnap = await getDoc(docRef);
+
         if (docSnap.exists()) {
           setMadarsa({ id: docSnap.id, ...docSnap.data() });
+
+          // Fetch staff profiles
+          const staffQuery = query(
+            collection(db, "staff_profiles"),
+            where("madarsaId", "==", id)
+          );
+          const staffSnap = await getDocs(staffQuery);
+          setStaffList(staffSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+        } else {
+          toast({
+            title: "Error",
+            description: "Madarsa not found",
+            variant: "destructive",
+          });
+          navigate("/madarsas");
         }
       } catch (error) {
         console.error("Error fetching madarsa:", error);
@@ -35,7 +63,7 @@ const MadarsaDetail = () => {
     };
 
     fetchMadarsa();
-  }, [id]);
+  }, [id, navigate, toast]); // Updated dependency array
 
   if (loading) {
     return (
@@ -230,6 +258,56 @@ const MadarsaDetail = () => {
                   </div>
                 )}
 
+                {staffList.length > 0 && (
+                  <div className="premium-card p-10 md:p-14 rounded-[3.5rem]">
+                    <div className="flex items-center gap-6 mb-12">
+                      <div className="p-4 rounded-3xl bg-blue-500 shadow-xl shadow-blue-500/20">
+                        <Users className="w-10 h-10 text-white" />
+                      </div>
+                      <div>
+                        <h2 className="text-3xl font-black tracking-tight uppercase">Our Academic Faculty</h2>
+                        <p className="text-muted-foreground font-medium uppercase tracking-widest text-[10px]">Learn from our expert Ustaads</p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                      {staffList.map((staff, idx) => (
+                        <div key={idx} className="flex items-center gap-6 p-6 rounded-3xl bg-accent/5 border border-primary/5 group hover:bg-accent/10 transition-all overflow-hidden relative">
+                          <div className="absolute top-0 right-0 p-4 opacity-[0.03] group-hover:scale-120 transition-transform">
+                            <GraduationCap className="w-16 h-16" />
+                          </div>
+                          <div
+                            className="w-20 h-20 rounded-2xl overflow-hidden bg-muted flex-shrink-0 border-2 border-primary/10 shadow-lg cursor-pointer group/photo relative"
+                            onClick={() => staff.photo && setSelectedPhoto(staff.photo)}
+                          >
+                            {staff.photo ? (
+                              <>
+                                <img src={staff.photo} alt={staff.name} className="w-full h-full object-cover transition-transform group-hover/photo:scale-110" />
+                                <div className="absolute inset-0 bg-black/20 opacity-0 group-hover/photo:opacity-100 transition-opacity flex items-center justify-center">
+                                  <Camera className="w-5 h-5 text-white" />
+                                </div>
+                              </>
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center bg-primary/5">
+                                <UserIcon className="w-10 h-10 text-primary/40" />
+                              </div>
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-grow">
+                            <h4 className="font-black text-lg text-foreground truncate">{staff.name}</h4>
+                            <div className="flex items-center gap-2 mt-1.5 text-primary">
+                              <Book className="w-4 h-4" />
+                              <p className="text-sm font-black uppercase tracking-tight truncate">{staff.subject}</p>
+                            </div>
+                            <span className="inline-block mt-3 px-3 py-1 rounded-full bg-primary/10 text-[10px] font-black text-primary uppercase tracking-widest shadow-sm">
+                              {staff.role || "Faculty"}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {madarsa.facilities && Object.entries(madarsa.facilities).some(([_, val]) => val) && (
                   <div className="premium-card p-10 md:p-14 rounded-[3.5rem]">
                     <div className="flex items-center gap-6 mb-12">
@@ -311,6 +389,28 @@ const MadarsaDetail = () => {
       </main>
 
       <Footer />
+
+      {/* Photo Preview Modal */}
+      <Dialog open={!!selectedPhoto} onOpenChange={() => setSelectedPhoto(null)}>
+        <DialogContent className="max-w-3xl p-0 overflow-hidden bg-transparent border-none shadow-none">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Photo Preview</DialogTitle>
+          </DialogHeader>
+          <div className="relative w-full h-[80vh] flex items-center justify-center p-4">
+            <div
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm -z-10"
+              onClick={() => setSelectedPhoto(null)}
+            />
+            {selectedPhoto && (
+              <img
+                src={selectedPhoto}
+                alt="Full Preview"
+                className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl animate-in zoom-in-95 duration-300"
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

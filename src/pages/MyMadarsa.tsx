@@ -2,13 +2,30 @@ import { useEffect, useState, useRef } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase";
-import { collection, query, where, doc, updateDoc, onSnapshot, getDocs } from "firebase/firestore";
+import { collection, onSnapshot, query, where, doc, updateDoc, getDocs, or, arrayUnion, setDoc, serverTimestamp } from "firebase/firestore";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
+import {
+    Select,
+    SelectContent,
+    SelectGroup,
+    SelectItem,
+    SelectLabel,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 import {
     MapPin,
     Users,
@@ -28,7 +45,10 @@ import {
     Clock,
     Camera,
     Image as GalleryIcon,
-    Loader2
+    Loader2,
+    Book,
+    User,
+    ArrowLeft
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { EditMadarsaModal } from "@/components/EditMadarsaModal";
@@ -40,10 +60,37 @@ const MyMadarsa = () => {
     const [madarsa, setMadarsa] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-    const [mediaLoading, setMediaLoading] = useState<'logo' | 'cover' | null>(null);
+    const [mediaLoading, setMediaLoading] = useState<'logo' | 'cover' | 'teacher' | null>(null);
+    const [joinStep, setJoinStep] = useState<1 | 2>(1);
+    const [foundMadarsa, setFoundMadarsa] = useState<any>(null);
+    const [teacherProfile, setTeacherProfile] = useState({
+        name: user?.displayName || "",
+        subject: "",
+        photo: ""
+    });
+    const [staffList, setStaffList] = useState<any[]>([]);
+    const [joinCode, setJoinCode] = useState("");
+    const [isJoining, setIsJoining] = useState(false);
+    const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
 
     const logoInputRef = useRef<HTMLInputElement>(null);
     const coverInputRef = useRef<HTMLInputElement>(null);
+    const teacherPhotoRef = useRef<HTMLInputElement>(null);
+
+    const SUBJECT_CATEGORIES = [
+        {
+            label: "Madarsa (Religious)",
+            subjects: ["Hifz", "Nazra", "Arabi", "Urdu", "Farsi", "Deeniyat", "Tajweed", "Ifta", "Alim", "Fazil"]
+        },
+        {
+            label: "School (Academic)",
+            subjects: ["Mathematics", "Science", "English", "Hindi", "Social Science", "Computer Science", "Sanskrit", "Physical Education"]
+        },
+        {
+            label: "Management / Admin",
+            subjects: ["Mohatmim", "Staff", "Other"]
+        }
+    ];
 
     const handleDirectUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'logo' | 'cover') => {
         const file = e.target.files?.[0];
@@ -118,7 +165,10 @@ const MyMadarsa = () => {
         if (user && !authLoading) {
             const q = query(
                 collection(db, "madarsas"),
-                where("meta.createdBy", "==", user.uid)
+                or(
+                    where("meta.createdBy", "==", user.uid),
+                    where("meta.staffUids", "array-contains", user.uid)
+                )
             );
 
             const unsubscribe = onSnapshot(q, (querySnapshot) => {
@@ -137,6 +187,117 @@ const MyMadarsa = () => {
             return () => unsubscribe();
         }
     }, [user, authLoading, navigate]);
+
+    useEffect(() => {
+        if (!madarsa?.id) return;
+
+        const q = query(
+            collection(db, "staff_profiles"),
+            where("madarsaId", "==", madarsa.id)
+        );
+
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const staff = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setStaffList(staff);
+        });
+
+        return () => unsubscribe();
+    }, [madarsa?.id]);
+
+    const handleJoinMadarsaStep1 = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!joinCode.trim()) return;
+
+        setIsJoining(true);
+        try {
+            const q = query(
+                collection(db, "madarsas"),
+                where("madarsaCode", "==", joinCode.trim().toUpperCase())
+            );
+            const querySnapshot = await getDocs(q);
+
+            if (querySnapshot.empty) {
+                toast({
+                    title: "Invalid Code",
+                    description: "No Madarsa found with this code.",
+                    variant: "destructive",
+                });
+                return;
+            }
+
+            const mDoc = querySnapshot.docs[0];
+            setFoundMadarsa({ id: mDoc.id, ...mDoc.data() });
+            setJoinStep(2);
+        } catch (error: any) {
+            console.error("Error finding madarsa:", error);
+            toast({
+                title: "Error",
+                description: "Failed to verify code.",
+                variant: "destructive",
+            });
+        } finally {
+            setIsJoining(false);
+        }
+    };
+
+    const handleJoinMadarsaStep2 = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!user || !foundMadarsa) return;
+
+        setIsJoining(true);
+        try {
+            // 1. Create staff profile
+            await setDoc(doc(db, "staff_profiles", `${foundMadarsa.id}_${user.uid}`), {
+                uid: user.uid,
+                madarsaId: foundMadarsa.id,
+                name: teacherProfile.name,
+                subject: teacherProfile.subject,
+                photo: teacherProfile.photo,
+                role: "teacher",
+                joinedAt: serverTimestamp(),
+            });
+
+            // 2. Link to madarsa
+            await updateDoc(doc(db, "madarsas", foundMadarsa.id), {
+                "meta.staffUids": arrayUnion(user.uid)
+            });
+
+            toast({
+                title: "Profile Created!",
+                description: `Successfully joined ${foundMadarsa.basicInfo.nameHindi}.`,
+            });
+            // Dashboard will auto-refresh via onSnapshot
+        } catch (error: any) {
+            console.error("Error creating profile:", error);
+            toast({
+                title: "Error",
+                description: "Failed to create profile.",
+                variant: "destructive",
+            });
+        } finally {
+            setIsJoining(false);
+        }
+    };
+
+    const handleTeacherPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        if (file.size > 500 * 1024) { // 500KB limit for teacher photo
+            toast({
+                title: "File too large",
+                description: "Teacher photo must be under 500KB.",
+                variant: "destructive",
+            });
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = () => {
+            setTeacherProfile(prev => ({ ...prev, photo: reader.result as string }));
+        };
+        reader.readAsDataURL(file);
+    };
 
     const copyCode = () => {
         if (madarsa?.madarsaCode) {
@@ -161,23 +322,191 @@ const MyMadarsa = () => {
             <div className="min-h-screen flex flex-col bg-background">
                 <Header />
                 <main className="flex-grow flex items-center justify-center p-4">
-                    <div className="text-center max-w-md mx-auto">
-                        <div className="w-20 h-20 rounded-full bg-accent mx-auto mb-6 flex items-center justify-center">
-                            <Building2 className="w-10 h-10 text-primary" />
+                    <div className="text-center max-w-md mx-auto space-y-8">
+                        <div>
+                            <div className="w-20 h-20 rounded-full bg-accent mx-auto mb-6 flex items-center justify-center">
+                                <Building2 className="w-10 h-10 text-primary" />
+                            </div>
+                            <h1 className="font-display text-2xl font-bold mb-3">Welcome to Madarsa Connect</h1>
+                            <p className="text-muted-foreground">
+                                Access your dashboard by joining an existing madarsa or registering a new one.
+                            </p>
                         </div>
-                        <h1 className="font-display text-2xl font-bold mb-3">No Madarsa Found</h1>
-                        <p className="text-muted-foreground mb-8">
-                            You haven't registered any madarsa yet. Register your madarsa to access the dashboard.
-                        </p>
-                        <Link to="/add-madarsa">
-                            <Button size="lg" className="w-full gap-2">
-                                <Plus className="w-4 h-4" />
-                                Add New Madarsa
-                            </Button>
-                        </Link>
+
+                        {/* Join Flow */}
+                        <Card className="premium-card p-6 overflow-hidden relative">
+                            {joinStep === 1 ? (
+                                <>
+                                    <h2 className="font-semibold text-lg mb-4">Join as Ustaad/Staff</h2>
+                                    <form onSubmit={handleJoinMadarsaStep1} className="space-y-4">
+                                        <div className="space-y-2 text-left">
+                                            <Label htmlFor="joinCode">Madarsa Code</Label>
+                                            <Input
+                                                id="joinCode"
+                                                placeholder="Enter code (e.g. MDR123)"
+                                                value={joinCode}
+                                                onChange={(e) => setJoinCode(e.target.value)}
+                                                className="text-center font-bold tracking-widest uppercase"
+                                                required
+                                            />
+                                        </div>
+                                        <Button type="submit" className="w-full gap-2" disabled={isJoining}>
+                                            {isJoining ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                                            Verify Code
+                                        </Button>
+                                    </form>
+                                </>
+                            ) : (
+                                <div className="animate-fade-in">
+                                    <div className="flex items-center gap-2 mb-6">
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            onClick={() => setJoinStep(1)}
+                                            className="rounded-full hover:bg-primary/10"
+                                        >
+                                            <ArrowLeft className="w-5 h-5 text-primary" />
+                                        </Button>
+                                        <div className="text-left">
+                                            <h2 className="font-display text-xl font-bold text-primary">Teacher Profile</h2>
+                                            <p className="text-xs text-muted-foreground">Joining: <span className="font-bold text-foreground">{foundMadarsa?.basicInfo?.nameHindi}</span></p>
+                                        </div>
+                                    </div>
+
+                                    <form onSubmit={handleJoinMadarsaStep2} className="space-y-8">
+                                        {/* Live Profile Preview */}
+                                        <div className="p-4 rounded-[2rem] bg-gradient-to-br from-primary/10 to-transparent border border-primary/10 relative overflow-hidden group">
+                                            <div className="absolute top-0 right-0 p-3 opacity-10">
+                                                <GraduationCap className="w-12 h-12 rotate-12" />
+                                            </div>
+                                            <div className="flex items-center gap-4 relative z-10">
+                                                <div className="relative">
+                                                    <div className="w-20 h-20 rounded-[1.5rem] overflow-hidden bg-background shadow-lg border-2 border-primary/20 flex items-center justify-center">
+                                                        {teacherProfile.photo ? (
+                                                            <img src={teacherProfile.photo} alt="Preview" className="w-full h-full object-cover" />
+                                                        ) : (
+                                                            <User className="w-10 h-10 text-muted-foreground/30" />
+                                                        )}
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => teacherPhotoRef.current?.click()}
+                                                        className="absolute -bottom-1 -right-1 p-2 bg-primary text-white rounded-xl shadow-lg hover:scale-110 active:scale-95 transition-all"
+                                                    >
+                                                        <Camera className="w-4 h-4" />
+                                                    </button>
+                                                </div>
+                                                <div className="text-left min-w-0 flex-grow">
+                                                    <h3 className="font-black text-lg truncate leading-tight">
+                                                        {teacherProfile.name || "Apka Naam"}
+                                                    </h3>
+                                                    <div className="flex items-center gap-1.5 mt-1 text-primary">
+                                                        <Book className="w-3.5 h-3.5" />
+                                                        <p className="text-xs font-black uppercase tracking-tight truncate">
+                                                            {teacherProfile.subject || "Subject"}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <input
+                                                type="file"
+                                                ref={teacherPhotoRef}
+                                                onChange={handleTeacherPhotoUpload}
+                                                accept="image/*"
+                                                className="hidden"
+                                            />
+                                        </div>
+
+                                        <div className="space-y-4 text-left">
+                                            <div className="space-y-1.5">
+                                                <Label htmlFor="tName" className="text-xs font-bold text-muted-foreground uppercase ml-1">Naam (Name)</Label>
+                                                <Input
+                                                    id="tName"
+                                                    value={teacherProfile.name}
+                                                    onChange={(e) => setTeacherProfile(prev => ({ ...prev, name: e.target.value }))}
+                                                    placeholder="e.g. Maulana Ahmad Raza"
+                                                    className="rounded-xl border-primary/10 focus:border-primary/30 h-12"
+                                                    required
+                                                />
+                                            </div>
+                                            <div className="space-y-1.5">
+                                                <Label htmlFor="tSubject" className="text-xs font-bold text-muted-foreground uppercase ml-1">Subject / Department</Label>
+                                                <Select
+                                                    onValueChange={(value) => setTeacherProfile(prev => ({ ...prev, subject: value }))}
+                                                    required
+                                                >
+                                                    <SelectTrigger id="tSubject" className="rounded-xl border-primary/10 focus:border-primary/30 h-12">
+                                                        <SelectValue placeholder="Select Subject" />
+                                                    </SelectTrigger>
+                                                    <SelectContent className="rounded-2xl border-primary/10 shadow-2xl">
+                                                        {SUBJECT_CATEGORIES.map((cat) => (
+                                                            <SelectGroup key={cat.label}>
+                                                                <SelectLabel className="text-[10px] font-black uppercase tracking-widest text-primary/50 px-4 py-2">{cat.label}</SelectLabel>
+                                                                {cat.subjects.map((sub) => (
+                                                                    <SelectItem key={sub} value={sub} className="px-4 py-3 cursor-pointer hover:bg-primary/5 transition-colors">
+                                                                        {sub}
+                                                                    </SelectItem>
+                                                                ))}
+                                                            </SelectGroup>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                        </div>
+
+                                        <Button type="submit" className="w-full gap-3 h-14 rounded-2xl text-lg font-bold shadow-xl shadow-primary/20 hover:shadow-primary/30 active:scale-95 transition-all" disabled={isJoining}>
+                                            {isJoining ? <Loader2 className="w-6 h-6 animate-spin" /> : <CheckCircle2 className="w-6 h-6" />}
+                                            Add Me to Madarsa
+                                        </Button>
+                                    </form>
+                                </div>
+                            )}
+                        </Card>
+
+                        <div className="relative">
+                            <div className="absolute inset-0 flex items-center">
+                                <span className="w-full border-t" />
+                            </div>
+                            <div className="relative flex justify-center text-xs uppercase">
+                                <span className="bg-background px-2 text-muted-foreground uppercase">Or</span>
+                            </div>
+                        </div>
+
+                        {/* Register New */}
+                        <div className="space-y-4">
+                            <h2 className="font-semibold text-lg">Are you a Mohatmim?</h2>
+                            <Link to="/add-madarsa">
+                                <Button size="lg" variant="outline" className="w-full gap-2">
+                                    <Plus className="w-4 h-4" />
+                                    Register New Madarsa
+                                </Button>
+                            </Link>
+                        </div>
                     </div>
                 </main>
                 <Footer />
+
+                {/* Photo Preview Modal */}
+                <Dialog open={!!selectedPhoto} onOpenChange={() => setSelectedPhoto(null)}>
+                    <DialogContent className="max-w-3xl p-0 overflow-hidden bg-transparent border-none shadow-none">
+                        <DialogHeader className="sr-only">
+                            <DialogTitle>Photo Preview</DialogTitle>
+                        </DialogHeader>
+                        <div className="relative w-full h-[80vh] flex items-center justify-center p-4">
+                            <div
+                                className="absolute inset-0 bg-black/60 backdrop-blur-sm -z-10"
+                                onClick={() => setSelectedPhoto(null)}
+                            />
+                            {selectedPhoto && (
+                                <img
+                                    src={selectedPhoto}
+                                    alt="Full Preview"
+                                    className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl animate-in zoom-in-95 duration-300"
+                                />
+                            )}
+                        </div>
+                    </DialogContent>
+                </Dialog>
             </div>
         );
     }
@@ -214,7 +543,7 @@ const MyMadarsa = () => {
                                 <img
                                     src={madarsa.media.coverPhoto}
                                     alt="Cover"
-                                    className={`w-full h-full object-cover transition-transform duration-1000 group-hover:scale-[1.03] ${mediaLoading === 'cover' ? 'opacity-50 grayscale' : ''}`}
+                                    className={`w - full h - full object - cover transition - transform duration - 1000 group - hover: scale - [1.03] ${mediaLoading === 'cover' ? 'opacity-50 grayscale' : ''} `}
                                 />
                             ) : (
                                 <div className="w-full h-full bg-gradient-to-br from-primary via-primary/90 to-primary/80 geometric-pattern opacity-95" />
@@ -257,7 +586,7 @@ const MyMadarsa = () => {
                                                 <img
                                                     src={madarsa.media.logo}
                                                     alt={madarsa.basicInfo?.nameEnglish}
-                                                    className={`w-full h-full object-cover ${mediaLoading === 'logo' ? 'opacity-50' : ''}`}
+                                                    className={`w - full h - full object - cover ${mediaLoading === 'logo' ? 'opacity-50' : ''} `}
                                                 />
                                             ) : (
                                                 <Building2 className="w-20 h-20 text-primary/15" />
@@ -347,7 +676,7 @@ const MyMadarsa = () => {
                                     </div>
 
                                     <div className="flex gap-4 w-full sm:w-auto">
-                                        <Link to={`/madarsa/${madarsa.id}`} className="flex-grow sm:flex-none">
+                                        <Link to={`/ madarsa / ${madarsa.id} `} className="flex-grow sm:flex-none">
                                             <Button variant="outline" className="w-full gap-3 h-14 px-10 rounded-2xl border-2 border-primary/20 hover:bg-primary/5 hover:border-primary/40 text-base font-black tracking-wider transition-all">
                                                 <Share2 className="w-5 h-5" />
                                                 PUBLIC PROFILE
@@ -378,9 +707,9 @@ const MyMadarsa = () => {
                                 key={i}
                                 onClick={item.action}
                                 className="premium-card p-4 flex flex-col items-center justify-center gap-3 group text-center animate-fade-up"
-                                style={{ animationDelay: `${i * 0.1}s` }}
+                                style={{ animationDelay: `${i * 0.1} s` }}
                             >
-                                <div className={`${item.color} p-3 rounded-xl text-white shadow-lg transition-transform group-hover:scale-110 group-active:scale-95`}>
+                                <div className={`${item.color} p - 3 rounded - xl text - white shadow - lg transition - transform group - hover: scale - 110 group - active: scale - 95`}>
                                     <item.icon className="w-6 h-6" />
                                 </div>
                                 <span className="font-semibold text-sm">{item.label}</span>
@@ -403,7 +732,7 @@ const MyMadarsa = () => {
                             <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
                                 {[
                                     { title: "Total Students", value: madarsa.academic?.totalStudents || 0, sub: "Enrolled", icon: GraduationCap, trend: null },
-                                    { title: "Teachers", value: madarsa.academic?.teachers || 0, sub: "Active Faculty", icon: Users, trend: null },
+                                    { title: "Teachers", value: staffList.length || madarsa.academic?.teachers || 0, sub: "Active Faculty", icon: Users, trend: null },
                                     { title: "Staff", value: madarsa.academic?.staff || 0, sub: "Support", icon: Building2, trend: null },
                                     { title: "Courses", value: madarsa.academic?.classes?.length || 0, sub: "Active Classes", icon: BookOpen, trend: null },
                                 ].map((stat, i) => (
@@ -525,22 +854,69 @@ const MyMadarsa = () => {
 
                         {/* Placeholder Content for other tabs */}
                         <TabsContent value="teachers">
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle>Manage Teachers</CardTitle>
-                                </CardHeader>
-                                <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-                                    <div className="w-16 h-16 rounded-full bg-accent flex items-center justify-center mb-4">
-                                        <Users className="w-8 h-8 text-muted-foreground" />
+                            <Card className="premium-card">
+                                <CardHeader className="flex flex-row items-center justify-between border-b border-border/50 pb-4">
+                                    <div>
+                                        <CardTitle className="text-xl flex items-center gap-2">
+                                            <Users className="w-6 h-6 text-primary" />
+                                            Active Faculty
+                                        </CardTitle>
+                                        <p className="text-sm text-muted-foreground">List of all ustaads and staff members.</p>
                                     </div>
-                                    <h3 className="text-lg font-semibold mb-2">No Teachers Added Yet</h3>
-                                    <p className="text-muted-foreground max-w-sm mb-6">
-                                        Share your Madarsa Code <strong>{madarsa.madarsaCode || "..."}</strong> with teachers so they can join your madarsa.
-                                    </p>
-                                    <Button>
-                                        <Plus className="w-4 h-4 mr-2" />
-                                        Add Teacher Manually
+                                    <Button size="sm" variant="outline" className="gap-2">
+                                        <Plus className="w-4 h-4" />
+                                        MDR Code: {madarsa.madarsaCode}
                                     </Button>
+                                </CardHeader>
+                                <CardContent className="p-6">
+                                    {staffList.length > 0 ? (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                            {staffList.map((staff, idx) => (
+                                                <div key={idx} className="flex items-center gap-4 p-4 rounded-3xl bg-accent/5 border border-primary/5 hover:bg-accent/10 transition-all group overflow-hidden relative">
+                                                    <div className="absolute top-0 right-0 p-4 opacity-[0.03] group-hover:scale-120 transition-transform">
+                                                        <GraduationCap className="w-16 h-16" />
+                                                    </div>
+                                                    <div
+                                                        className="w-16 h-16 rounded-2xl overflow-hidden bg-muted flex-shrink-0 border border-primary/10 cursor-pointer group/photo relative"
+                                                        onClick={() => staff.photo && setSelectedPhoto(staff.photo)}
+                                                    >
+                                                        {staff.photo ? (
+                                                            <>
+                                                                <img src={staff.photo} alt={staff.name} className="w-full h-full object-cover transition-transform group-hover/photo:scale-110" />
+                                                                <div className="absolute inset-0 bg-black/20 opacity-0 group-hover/photo:opacity-100 transition-opacity flex items-center justify-center">
+                                                                    <Camera className="w-4 h-4 text-white" />
+                                                                </div>
+                                                            </>
+                                                        ) : (
+                                                            <div className="w-full h-full flex items-center justify-center bg-primary/5">
+                                                                <User className="w-8 h-8 text-primary/40" />
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    <div className="min-w-0">
+                                                        <h4 className="font-black text-sm text-foreground truncate">{staff.name}</h4>
+                                                        <div className="flex items-center gap-1.5 mt-1">
+                                                            <Book className="w-3.5 h-3.5 text-primary" />
+                                                            <p className="text-xs font-bold text-primary truncate max-w-[120px]">{staff.subject}</p>
+                                                        </div>
+                                                        <span className="inline-block mt-2 px-2 py-0.5 rounded-full bg-primary/10 text-[9px] font-black text-primary uppercase tracking-tighter">
+                                                            {staff.role || "Teacher"}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="flex flex-col items-center justify-center py-12 text-center">
+                                            <div className="w-16 h-16 rounded-full bg-accent flex items-center justify-center mb-4">
+                                                <Users className="w-8 h-8 text-muted-foreground" />
+                                            </div>
+                                            <h3 className="text-lg font-semibold mb-2">No Teachers Added Yet</h3>
+                                            <p className="text-muted-foreground max-w-sm mb-6">
+                                                Share your Madarsa Code <strong>{madarsa.madarsaCode || "..."}</strong> with teachers so they can join your madarsa.
+                                            </p>
+                                        </div>
+                                    )}
                                 </CardContent>
                             </Card>
                         </TabsContent>
@@ -640,6 +1016,28 @@ const MyMadarsa = () => {
                     }}
                 />
             )}
+
+            {/* Photo Preview Modal */}
+            <Dialog open={!!selectedPhoto} onOpenChange={() => setSelectedPhoto(null)}>
+                <DialogContent className="max-w-3xl p-0 overflow-hidden bg-transparent border-none shadow-none">
+                    <DialogHeader className="sr-only">
+                        <DialogTitle>Photo Preview</DialogTitle>
+                    </DialogHeader>
+                    <div className="relative w-full h-[80vh] flex items-center justify-center p-4">
+                        <div
+                            className="absolute inset-0 bg-black/60 backdrop-blur-sm -z-10"
+                            onClick={() => setSelectedPhoto(null)}
+                        />
+                        {selectedPhoto && (
+                            <img
+                                src={selectedPhoto}
+                                alt="Full Preview"
+                                className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl animate-in zoom-in-95 duration-300"
+                            />
+                        )}
+                    </div>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 };

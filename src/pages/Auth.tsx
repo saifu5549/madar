@@ -1,32 +1,57 @@
 import { useState } from "react";
-import { useSearchParams, Link } from "react-router-dom";
-import { ArrowLeft, Mail, Lock, Building2 } from "lucide-react";
+import { useNavigate, useSearchParams, Link } from "react-router-dom";
+import { ArrowLeft, Mail, Lock, User, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/context/AuthContext";
 
 const Auth = () => {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const isRegister = searchParams.get("mode") === "register";
   const [isLogin, setIsLogin] = useState(!isRegister);
   const { toast } = useToast();
+  const { login, register } = useAuth();
+  const [authLoading, setAuthLoading] = useState(false);
 
   const [formData, setFormData] = useState({
     name: "",
     email: "",
     password: "",
-    madarsaName: "",
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setAuthLoading(true);
 
-    // This is a demo - show toast about backend requirement
-    toast({
-      title: isLogin ? "Login Demo" : "Registration Demo",
-      description: "Backend integration required. Enable Lovable Cloud to add authentication.",
-    });
+    try {
+      if (isLogin) {
+        await login(formData.email, formData.password);
+        toast({
+          title: "Welcome Back",
+          description: "Signed in successfully.",
+        });
+        navigate("/my-madarsa");
+      } else {
+        await register(formData.email, formData.password, formData.name);
+        toast({
+          title: "Account Created",
+          description: "Welcome to Madarsa Connect!",
+        });
+        navigate("/my-madarsa");
+      }
+    } catch (error: any) {
+      console.error("Auth error:", error);
+      toast({
+        title: isLogin ? "Login Failed" : "Registration Failed",
+        description: error.message || "An error occurred during authentication",
+        variant: "destructive",
+      });
+    } finally {
+      setAuthLoading(false);
+    }
   };
 
   return (
@@ -70,19 +95,59 @@ const Auth = () => {
             {/* Form */}
             <form onSubmit={handleSubmit} className="space-y-5">
               {!isLogin ? (
-                <div className="text-center space-y-4 py-4">
-                  <div className="p-4 bg-primary/10 rounded-lg">
-                    <Building2 className="w-12 h-12 text-primary mx-auto mb-2" />
-                    <h3 className="font-semibold text-lg">Register New Madarsa</h3>
-                    <p className="text-sm text-muted-foreground mb-4">
-                      Create a comprehensive profile for your madarsa with our multi-step registration wizard.
-                    </p>
-                    <Link to="/add-madarsa">
-                      <Button type="button" variant="hero" className="w-full">
-                        Start Registration
-                      </Button>
-                    </Link>
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="name">Full Name</Label>
+                    <div className="relative">
+                      <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                      <Input
+                        id="name"
+                        type="text"
+                        placeholder="Enter your name"
+                        value={formData.name}
+                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        className="pl-10 h-12"
+                        required
+                      />
+                    </div>
                   </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="email">Email Address</Label>
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                      <Input
+                        id="email"
+                        type="email"
+                        placeholder="Enter your email"
+                        value={formData.email}
+                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                        className="pl-10 h-12"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="password">Password</Label>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                      <Input
+                        id="password"
+                        type="password"
+                        placeholder="Create a password"
+                        value={formData.password}
+                        onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                        className="pl-10 h-12"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <Button type="submit" variant="hero" className="w-full h-12" disabled={authLoading}>
+                    {authLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Create Account"}
+                  </Button>
+
                   <div className="relative">
                     <div className="absolute inset-0 flex items-center">
                       <span className="w-full border-t" />
@@ -93,15 +158,7 @@ const Auth = () => {
                       </span>
                     </div>
                   </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => setIsLogin(true)}
-                  >
-                    Back to Login
-                  </Button>
-                </div>
+                </>
               ) : (
                 <>
                   <div className="space-y-2">
@@ -136,8 +193,8 @@ const Auth = () => {
                     </div>
                   </div>
 
-                  <Button type="submit" variant="hero" className="w-full h-12">
-                    Sign In
+                  <Button type="submit" variant="hero" className="w-full h-12" disabled={authLoading}>
+                    {authLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Sign In"}
                   </Button>
                 </>
               )}
