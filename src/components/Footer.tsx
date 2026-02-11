@@ -48,7 +48,6 @@ const Footer = () => {
             <h4 className="font-display font-semibold mb-4">Contact</h4>
             <div className="flex flex-col gap-2 text-sm opacity-80">
               <p>info@madarsadirectory.in</p>
-              <p>+91 1800-XXX-XXXX</p>
               <p>New Delhi, India</p>
             </div>
           </div>

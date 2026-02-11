@@ -1,9 +1,8 @@
 import { useEffect, useState, useRef } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
-import { db, storage } from "@/lib/firebase";
-import { collection, query, where, getDocs, doc, updateDoc } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { db } from "@/lib/firebase";
+import { collection, query, where, doc, updateDoc, onSnapshot, getDocs } from "firebase/firestore";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
@@ -12,7 +11,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
     MapPin,
-    Calendar,
     Users,
     GraduationCap,
     BookOpen,
@@ -51,11 +49,11 @@ const MyMadarsa = () => {
         const file = e.target.files?.[0];
         if (!file || !madarsa?.id) return;
 
-        // Check file size (2MB limit)
-        if (file.size > 2 * 1024 * 1024) {
+        // Check file size (1MB limit for Base64 storage in Firestore)
+        if (file.size > 1 * 1024 * 1024) {
             toast({
                 title: "Error",
-                description: "File size exceeds 2MB limit.",
+                description: "File size exceeds 1MB limit for free storage workaround.",
                 variant: "destructive",
             });
             return;
@@ -63,13 +61,21 @@ const MyMadarsa = () => {
 
         setMediaLoading(type);
         try {
-            const fileRef = ref(storage, `madarsa-images/${madarsa.id}/${type}_${Date.now()}`);
-            await uploadBytes(fileRef, file);
-            const downloadUrl = await getDownloadURL(fileRef);
+            // Convert to Base64
+            const reader = new FileReader();
+            const base64Promise = new Promise((resolve, reject) => {
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+
+            const base64Data = await base64Promise as string;
 
             const madarsaRef = doc(db, "madarsas", madarsa.id);
+            const field = type === 'logo' ? 'media.logo' : 'media.coverPhoto';
+
             await updateDoc(madarsaRef, {
-                [`media.${type === 'logo' ? 'logo' : 'coverPhoto'}`]: downloadUrl,
+                [field]: base64Data,
                 "meta.updatedAt": Date.now()
             });
 
@@ -78,7 +84,7 @@ const MyMadarsa = () => {
                 ...prev,
                 media: {
                     ...prev.media,
-                    [type === 'logo' ? 'logo' : 'coverPhoto']: downloadUrl
+                    [type === 'logo' ? 'logo' : 'coverPhoto']: base64Data
                 },
                 meta: {
                     ...prev.meta,
@@ -94,7 +100,7 @@ const MyMadarsa = () => {
             console.error("Error uploading media:", error);
             toast({
                 title: "Error",
-                description: "Failed to upload image. Please try again.",
+                description: "Failed to update image. Please try again.",
                 variant: "destructive",
             });
         } finally {
@@ -109,38 +115,28 @@ const MyMadarsa = () => {
             return;
         }
 
-        const fetchMadarsa = async () => {
-            if (!user) return;
+        if (user && !authLoading) {
+            const q = query(
+                collection(db, "madarsas"),
+                where("meta.createdBy", "==", user.uid)
+            );
 
-            try {
-                // Query madarsas where createdBy matches current user
-                const q = query(
-                    collection(db, "madarsas"),
-                    where("meta.createdBy", "==", user.uid)
-                );
-
-                const querySnapshot = await getDocs(q);
+            const unsubscribe = onSnapshot(q, (querySnapshot) => {
                 if (!querySnapshot.empty) {
-                    // For now, assume one madarsa per user
                     const madarsaDoc = querySnapshot.docs[0];
                     setMadarsa({ id: madarsaDoc.id, ...madarsaDoc.data() });
+                } else {
+                    setMadarsa(null);
                 }
-            } catch (error) {
-                console.error("Error fetching madarsa:", error);
-                toast({
-                    title: "Error",
-                    description: "Failed to load madarsa details.",
-                    variant: "destructive",
-                });
-            } finally {
                 setLoading(false);
-            }
-        };
+            }, (error) => {
+                console.error("Error listening to madarsa data:", error);
+                setLoading(false);
+            });
 
-        if (!authLoading) {
-            fetchMadarsa();
+            return () => unsubscribe();
         }
-    }, [user, authLoading, navigate, toast]);
+    }, [user, authLoading, navigate]);
 
     const copyCode = () => {
         if (madarsa?.madarsaCode) {
@@ -191,7 +187,10 @@ const MyMadarsa = () => {
             <Header />
 
             <main className="flex-grow py-8 bg-accent/5 geometric-pattern">
-                <div className="container mx-auto px-4 max-w-6xl">
+                {/* Full-bleed Header Background for Premium Look */}
+                <div className="absolute top-0 left-0 right-0 h-[32rem] bg-gradient-to-b from-primary/10 via-primary/[0.03] to-transparent pointer-events-none" />
+
+                <div className="container mx-auto px-4 max-w-7xl relative">
                     {/* Hidden File Inputs */}
                     <input
                         type="file"
@@ -207,144 +206,159 @@ const MyMadarsa = () => {
                         accept="image/*"
                         className="hidden"
                     />
-                    {/* Integrated Header Section */}
-                    <div className="premium-card rounded-3xl overflow-hidden mb-8 animate-fade-up shadow-2xl">
-                        {/* Banner Area */}
-                        <div className="relative h-48 md:h-64 group">
+                    {/* Highly Integrated Premium Header Container */}
+                    <div className="premium-card rounded-[2.5rem] overflow-hidden mb-12 animate-fade-up shadow-[0_32px_64px_-16px_rgba(0,0,0,0.2)] border-2 border-primary/5">
+                        {/* Immersive Banner Area */}
+                        <div className="relative h-64 md:h-[26rem] group">
                             {madarsa.media?.coverPhoto ? (
                                 <img
-                                    src={`${madarsa.media.coverPhoto}?v=${madarsa.meta?.updatedAt || 1}`}
+                                    src={madarsa.media.coverPhoto}
                                     alt="Cover"
-                                    className={`w-full h-full object-cover transition-transform duration-700 group-hover:scale-105 ${mediaLoading === 'cover' ? 'opacity-50 grayscale' : ''}`}
+                                    className={`w-full h-full object-cover transition-transform duration-1000 group-hover:scale-[1.03] ${mediaLoading === 'cover' ? 'opacity-50 grayscale' : ''}`}
                                 />
                             ) : (
-                                <div className="w-full h-full bg-gradient-to-r from-primary/80 via-primary to-primary/80 geometric-pattern opacity-90" />
+                                <div className="w-full h-full bg-gradient-to-br from-primary via-primary/90 to-primary/80 geometric-pattern opacity-95" />
                             )}
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+
+                            {/* Cinematic Overlays */}
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent" />
+                            <div className="absolute inset-0 bg-primary/5 mix-blend-overlay" />
 
                             {mediaLoading === 'cover' && (
-                                <div className="absolute inset-0 flex items-center justify-center bg-black/20 backdrop-blur-[2px]">
-                                    <Loader2 className="w-10 h-10 text-white animate-spin" />
+                                <div className="absolute inset-0 flex items-center justify-center bg-black/20 backdrop-blur-sm z-30">
+                                    <div className="p-4 bg-white/10 rounded-2xl backdrop-blur-xl border border-white/20">
+                                        <Loader2 className="w-12 h-12 text-white animate-spin" />
+                                    </div>
                                 </div>
                             )}
 
                             <Button
                                 variant="secondary"
                                 size="sm"
-                                className="absolute top-4 right-4 gap-2 bg-white/20 backdrop-blur-md text-white border-white/20 hover:bg-white/40 rounded-full transition-all shadow-lg"
+                                className="absolute top-6 right-6 gap-2 bg-black/40 backdrop-blur-2xl text-white border-white/10 hover:bg-black/60 rounded-full transition-all shadow-2xl scale-110 active:scale-95 group/banner-btn"
                                 disabled={mediaLoading !== null}
                                 onClick={() => coverInputRef.current?.click()}
                             >
-                                <GalleryIcon className="w-4 h-4" />
-                                <span>Gallery</span>
+                                <GalleryIcon className="w-4 h-4 group-hover/banner-btn:scale-120 transition-transform" />
+                                <span className="font-black text-xs uppercase tracking-wider">Change Header</span>
                             </Button>
 
-                            {/* Logo Overlap (Inside Banner context for relative layout) */}
-                            <div className="absolute -bottom-12 left-6 md:left-10 flex items-end gap-6 z-20">
-                                <div className="relative group/logo">
-                                    <div className="w-24 h-24 md:w-36 md:h-36 rounded-3xl p-1.5 bg-background shadow-2xl">
-                                        <div className="w-full h-full rounded-2xl overflow-hidden bg-muted flex items-center justify-center border border-border/50 relative">
+                            {/* Elevated Logo & Identity Section */}
+                            <div className="absolute -bottom-20 left-6 md:left-12 flex items-end gap-8 md:gap-12 z-20 w-full pr-12">
+                                <div className="relative group/logo flex-shrink-0">
+                                    <div className="w-32 h-32 md:w-52 md:h-52 rounded-[2.5rem] p-2.5 bg-background shadow-[0_25px_60px_-15px_rgba(0,0,0,0.4)] transform transition-all duration-700 group-hover/logo:scale-[1.03] group-hover/logo:-rotate-1">
+                                        <div className="w-full h-full rounded-[2rem] overflow-hidden bg-muted flex items-center justify-center border-2 border-border/50 relative shadow-inner">
                                             {mediaLoading === 'logo' && (
-                                                <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/30 backdrop-blur-[1px]">
-                                                    <Loader2 className="w-6 h-6 text-white animate-spin" />
+                                                <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+                                                    <Loader2 className="w-10 h-10 text-white animate-spin" />
                                                 </div>
                                             )}
                                             {madarsa.media?.logo ? (
                                                 <img
-                                                    src={`${madarsa.media.logo}?v=${madarsa.meta?.updatedAt || 1}`}
+                                                    src={madarsa.media.logo}
                                                     alt={madarsa.basicInfo?.nameEnglish}
                                                     className={`w-full h-full object-cover ${mediaLoading === 'logo' ? 'opacity-50' : ''}`}
                                                 />
                                             ) : (
-                                                <Building2 className="w-12 h-12 text-primary/30" />
+                                                <Building2 className="w-20 h-20 text-primary/15" />
                                             )}
                                         </div>
                                     </div>
                                     <button
-                                        className="absolute bottom-0 right-0 p-3 bg-primary text-white rounded-xl shadow-xl transform translate-x-1/4 translate-y-1/4 opacity-100 transition-all hover:scale-110 border-4 border-background disabled:opacity-50 z-30"
+                                        className="absolute bottom-3 right-3 p-4 bg-primary text-white rounded-[1.25rem] shadow-2xl transform translate-x-1/4 translate-y-1/4 opacity-100 transition-all hover:scale-110 hover:rotate-6 border-4 border-background disabled:opacity-50 z-30 group/cam-btn"
                                         disabled={mediaLoading !== null}
                                         onClick={() => logoInputRef.current?.click()}
-                                        title="Change Logo"
                                     >
-                                        <Camera className="w-5 h-5" />
+                                        <Camera className="w-6 h-6 group-hover/cam-btn:rotate-12 transition-transform" />
                                     </button>
                                 </div>
 
-                                <div className="mb-4 hidden md:block">
-                                    <h1 className="font-display text-4xl font-bold text-white drop-shadow-lg mb-1">
+                                <div className="mb-24 hidden md:block flex-grow max-w-4xl">
+                                    <h1 className="font-display text-6xl font-black text-white drop-shadow-[0_8px_30px_rgba(0,0,0,0.6)] mb-4 tracking-tight leading-tight uppercase text-wrap">
                                         {madarsa.basicInfo?.nameEnglish}
                                     </h1>
-                                    <div className="flex items-center gap-2 text-white/90 font-medium">
-                                        <MapPin className="w-4 h-4 text-primary" />
-                                        <span>{madarsa.location?.city}, {madarsa.location?.state}</span>
+                                    <div className="flex items-center gap-4 text-white/95 font-black bg-white/10 backdrop-blur-2xl border border-white/20 px-6 py-2.5 rounded-2xl w-fit shadow-2xl">
+                                        <div className="p-1.5 bg-primary/20 rounded-lg">
+                                            <MapPin className="w-5 h-5 text-primary" />
+                                        </div>
+                                        <span className="text-base tracking-widest">{madarsa.location?.city}, {madarsa.location?.state}</span>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        {/* Details Area */}
-                        <div className="p-6 md:p-10 pt-16 md:pt-12 bg-background/40 backdrop-blur-xl">
-                            <div className="flex flex-col md:flex-row justify-between gap-8">
-                                <div className="flex flex-col gap-4">
-                                    <div className="md:hidden mb-2">
-                                        <h1 className="font-display text-3xl font-bold text-gradient-primary mb-1">
+                        {/* High-End Details Hub */}
+                        <div className="p-8 md:p-14 pt-24 md:pt-[6.5rem] bg-gradient-to-b from-background/50 via-background/80 to-background backdrop-blur-[40px]">
+                            <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-12">
+                                <div className="flex flex-col gap-8 w-full xl:w-auto">
+                                    <div className="md:hidden">
+                                        <h1 className="font-display text-4xl font-black text-gradient-primary mb-3 leading-none uppercase">
                                             {madarsa.basicInfo?.nameEnglish}
                                         </h1>
-                                        <p className="text-muted-foreground flex items-center gap-1.5 text-sm font-medium">
-                                            <MapPin className="w-4 h-4 text-primary/60" />
+                                        <div className="flex items-center gap-2.5 text-muted-foreground font-black text-sm tracking-widest uppercase opacity-70">
+                                            <MapPin className="w-4 h-4 text-primary" />
                                             {madarsa.location?.city}, {madarsa.location?.state}
-                                        </p>
-                                    </div>
-
-                                    <div className="flex flex-wrap items-center gap-3">
-                                        <Badge variant="outline" className="border-primary/20 bg-primary/5 text-primary rounded-full px-4 py-1 text-xs font-bold shadow-sm">
-                                            {madarsa.meta?.status === "verified" ? (
-                                                <><CheckCircle2 className="w-3.5 h-3.5 mr-2" /> Verified Profile</>
-                                            ) : (
-                                                <><Clock className="w-3.5 h-3.5 mr-2" /> Pending Verification</>
-                                            )}
-                                        </Badge>
-                                        <Badge variant="secondary" className="rounded-full px-4 py-1 text-xs font-bold border border-border shadow-sm">
-                                            <Calendar className="w-3.5 h-3.5 mr-2 text-primary" />
-                                            Since {madarsa.basicInfo?.established}
-                                        </Badge>
-                                        <Badge variant="secondary" className="rounded-full px-4 py-1 text-xs font-bold border border-border shadow-sm">
-                                            <Users className="w-3.5 h-3.5 mr-2 text-primary" />
-                                            {madarsa.academic?.totalStudents || 0} Students
-                                        </Badge>
-                                    </div>
-                                </div>
-
-                                {/* Madarsa Code & Quick Actions */}
-                                <div className="flex flex-col gap-4 md:items-end w-full md:w-auto mt-2 md:mt-0">
-                                    <div className="glass-card border-primary/20 bg-primary/[0.03] rounded-2xl p-4 flex flex-col items-center justify-center min-w-[240px] shadow-lg relative overflow-hidden group/code cursor-pointer" onClick={copyCode}>
-                                        <div className="absolute inset-0 bg-primary/5 translate-y-full group-hover/code:translate-y-0 transition-transform duration-300" />
-                                        <span className="text-[10px] font-bold text-primary uppercase tracking-[0.25em] mb-2 opacity-80 relative z-10">
-                                            OFFICIAL MADARSA CODE
-                                        </span>
-                                        <div className="flex items-center gap-4 relative z-10">
-                                            <span className="font-mono text-3xl font-black tracking-[0.2em] text-foreground">
-                                                {madarsa.madarsaCode || "N/A"}
-                                            </span>
-                                            <Copy className="w-5 h-5 text-primary group-hover/code:scale-110 transition-transform" />
                                         </div>
                                     </div>
 
-                                    <div className="flex gap-3 w-full md:w-auto">
-                                        <Link to={`/madarsa/${madarsa.id}`} className="flex-1">
-                                            <Button variant="outline" size="sm" className="w-full gap-2 rounded-xl border-primary/20 hover:bg-primary/5 hover:text-primary transition-all font-bold">
-                                                <Share2 className="w-4 h-4" />
-                                                Public View
+                                    <div className="flex flex-wrap items-center gap-6">
+                                        <Badge variant="outline" className="h-12 border-primary/20 bg-primary/5 text-primary rounded-[1.25rem] px-6 text-sm font-black tracking-widest shadow-xl border-2 flex items-center justify-center">
+                                            {madarsa.meta?.status === "verified" ? (
+                                                <><CheckCircle2 className="w-5 h-5 mr-3 text-primary animate-pulse" /> VERIFIED INSTITUTION</>
+                                            ) : (
+                                                <><Clock className="w-5 h-5 mr-3 text-amber-500" /> PENDING VERIFICATION</>
+                                            )}
+                                        </Badge>
+
+                                        <div className="flex items-center gap-8 bg-muted/30 px-8 py-3 rounded-[1.25rem] border border-border/50">
+                                            <div className="flex flex-col">
+                                                <span className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.3em] mb-1">FOUNDED</span>
+                                                <span className="text-base font-black text-foreground">{madarsa.basicInfo?.established}</span>
+                                            </div>
+                                            <div className="w-px h-10 bg-border/80" />
+                                            <div className="flex flex-col">
+                                                <span className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.3em] mb-1">CAPACITY</span>
+                                                <span className="text-base font-black text-primary">{madarsa.academic?.totalStudents || 0}+ STUDENTS</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Identity Card & Pro Actions */}
+                                <div className="flex flex-col sm:flex-row xl:flex-col gap-6 items-stretch sm:items-center xl:items-end w-full xl:w-auto">
+                                    <div
+                                        className="relative group/code cursor-pointer overflow-hidden rounded-[2rem] p-6 bg-gradient-to-br from-primary/[0.08] via-primary/[0.04] to-transparent border-2 border-primary/20 shadow-[0_20px_40px_-10px_rgba(var(--primary-rgb),0.1)] transition-all hover:border-primary/50 hover:shadow-[0_25px_50px_-12px_rgba(var(--primary-rgb),0.2)]"
+                                        onClick={copyCode}
+                                    >
+                                        <div className="absolute -top-4 -right-4 p-8 opacity-5 group-hover/code:opacity-10 transition-opacity">
+                                            <Copy className="w-20 h-20" />
+                                        </div>
+                                        <span className="text-[11px] font-black text-primary uppercase tracking-[0.5em] mb-4 block opacity-80">
+                                            OFFICIAL MADARSA CODE
+                                        </span>
+                                        <div className="flex items-center gap-8">
+                                            <span className="font-mono text-4xl font-black tracking-[0.3em] text-foreground drop-shadow-sm select-none">
+                                                {madarsa.madarsaCode || "N/A"}
+                                            </span>
+                                            <div className="h-12 w-12 rounded-[1.25rem] bg-primary text-white flex items-center justify-center shadow-xl transform active:scale-90 group-hover/code:rotate-3 transition-all">
+                                                <Copy className="w-5 h-5" />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex gap-4 w-full sm:w-auto">
+                                        <Link to={`/madarsa/${madarsa.id}`} className="flex-grow sm:flex-none">
+                                            <Button variant="outline" className="w-full gap-3 h-14 px-10 rounded-2xl border-2 border-primary/20 hover:bg-primary/5 hover:border-primary/40 text-base font-black tracking-wider transition-all">
+                                                <Share2 className="w-5 h-5" />
+                                                PUBLIC PROFILE
                                             </Button>
                                         </Link>
                                         <Button
-                                            variant="outline"
-                                            size="sm"
-                                            className="gap-2 rounded-xl border-primary/20 hover:bg-primary/5 hover:text-primary transition-all font-bold"
+                                            className="gap-3 h-14 rounded-2xl shadow-xl font-black text-base px-10 active:scale-95 transition-all hover:shadow-primary/20"
                                             onClick={() => setIsEditModalOpen(true)}
                                         >
-                                            <Settings className="w-4 h-4" />
-                                            Settings
+                                            <Settings className="w-5 h-5 group-hover:rotate-90 transition-transform duration-500" />
+                                            SETTINGS
                                         </Button>
                                     </div>
                                 </div>
@@ -388,10 +402,10 @@ const MyMadarsa = () => {
                             {/* Stats Grid */}
                             <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
                                 {[
-                                    { title: "Total Students", value: madarsa.academic?.totalStudents || 0, sub: "Enrolled", icon: GraduationCap, trend: "+12%" },
-                                    { title: "Teachers", value: madarsa.academic?.teachers || 0, sub: "Active Faculty", icon: Users, trend: "+2" },
-                                    { title: "Staff", value: madarsa.academic?.staff || 0, sub: "Support", icon: Building2, trend: "Stable" },
-                                    { title: "Courses", value: madarsa.academic?.classes?.length || 0, sub: "Active Classes", icon: BookOpen, trend: "4 New" },
+                                    { title: "Total Students", value: madarsa.academic?.totalStudents || 0, sub: "Enrolled", icon: GraduationCap, trend: null },
+                                    { title: "Teachers", value: madarsa.academic?.teachers || 0, sub: "Active Faculty", icon: Users, trend: null },
+                                    { title: "Staff", value: madarsa.academic?.staff || 0, sub: "Support", icon: Building2, trend: null },
+                                    { title: "Courses", value: madarsa.academic?.classes?.length || 0, sub: "Active Classes", icon: BookOpen, trend: null },
                                 ].map((stat, i) => (
                                     <Card key={i} className="premium-card overflow-hidden group">
                                         <CardContent className="p-6">
@@ -399,9 +413,11 @@ const MyMadarsa = () => {
                                                 <div className="p-2 rounded-lg bg-primary/10 group-hover:bg-primary transition-colors">
                                                     <stat.icon className="h-6 w-6 text-primary group-hover:text-white transition-colors" />
                                                 </div>
-                                                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100 uppercase tracking-wider">
-                                                    {stat.trend}
-                                                </span>
+                                                {stat.trend && (
+                                                    <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100 uppercase tracking-wider">
+                                                        {stat.trend}
+                                                    </span>
+                                                )}
                                             </div>
                                             <div className="text-3xl font-bold tracking-tight mb-1">{stat.value}</div>
                                             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">{stat.title}</p>
@@ -462,19 +478,9 @@ const MyMadarsa = () => {
                                             </Button>
                                         </CardHeader>
                                         <CardContent className="space-y-6">
-                                            {[
-                                                { type: "student", msg: "5 new students enrolled in Class 4", time: "2 hours ago" },
-                                                { type: "update", msg: "Profile information updated", time: "5 hours ago" },
-                                                { type: "teacher", msg: "Maulana Ahmed joined the faculty", time: "Yesterday" },
-                                            ].map((activity, i) => (
-                                                <div key={i} className="flex gap-4 group cursor-default">
-                                                    <div className="w-1 bg-primary/20 rounded-full group-hover:bg-primary transition-colors" />
-                                                    <div className="flex-grow">
-                                                        <p className="text-sm font-medium">{activity.msg}</p>
-                                                        <p className="text-xs text-muted-foreground mt-1 uppercase tracking-tight font-semibold italic">{activity.time}</p>
-                                                    </div>
-                                                </div>
-                                            ))}
+                                            <div className="flex flex-col items-center justify-center py-4 text-center">
+                                                <p className="text-sm text-muted-foreground italic">Activity tracking system coming soon.</p>
+                                            </div>
                                         </CardContent>
                                     </Card>
                                 </div>
@@ -492,20 +498,9 @@ const MyMadarsa = () => {
                                             </CardTitle>
                                         </CardHeader>
                                         <CardContent className="space-y-4">
-                                            {[
-                                                { title: "Exams Starting", date: "Feb 20", level: "Important" },
-                                                { title: "Holiday Announcement", date: "Feb 15", level: "General" },
-                                            ].map((notice, i) => (
-                                                <div key={i} className="p-3 rounded-xl bg-card border border-border/50 shadow-sm hover:shadow-md transition-shadow">
-                                                    <div className="flex justify-between items-start mb-2">
-                                                        <Badge variant="outline" className="text-[10px] border-primary/30 text-primary">
-                                                            {notice.level}
-                                                        </Badge>
-                                                        <span className="text-[10px] font-bold text-muted-foreground">{notice.date}</span>
-                                                    </div>
-                                                    <p className="text-sm font-bold">{notice.title}</p>
-                                                </div>
-                                            ))}
+                                            <div className="flex flex-col items-center justify-center py-4 text-center">
+                                                <p className="text-sm text-muted-foreground">No active notices.</p>
+                                            </div>
                                             <Button className="w-full mt-2 rounded-xl bg-primary hover:bg-primary/90 text-white font-bold py-5 shadow-lg shadow-primary/20">
                                                 Post New Notice
                                             </Button>
@@ -566,6 +561,50 @@ const MyMadarsa = () => {
                                     <Button>
                                         <Plus className="w-4 h-4 mr-2" />
                                         Add Student Manually
+                                    </Button>
+                                </CardContent>
+                            </Card>
+                        </TabsContent>
+
+                        <TabsContent value="academics">
+                            <Card className="premium-card">
+                                <CardHeader>
+                                    <CardTitle className="text-xl flex items-center gap-2">
+                                        <BookOpen className="w-6 h-6 text-primary" />
+                                        Academic Overview
+                                    </CardTitle>
+                                </CardHeader>
+                                <CardContent className="space-y-8">
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                        {[
+                                            { label: "Total Students", value: madarsa.academic?.totalStudents || 0 },
+                                            { label: "Teachers", value: madarsa.academic?.teachers || 0 },
+                                            { label: "Staff", value: madarsa.academic?.staff || 0 },
+                                        ].map((item, i) => (
+                                            <div key={i} className="p-4 rounded-2xl bg-muted/30 border border-border/50">
+                                                <p className="text-xs font-black text-muted-foreground uppercase mb-1">{item.label}</p>
+                                                <p className="text-2xl font-black text-foreground">{item.value}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    <div className="space-y-4">
+                                        <h4 className="font-bold text-lg">Classes Offered</h4>
+                                        <div className="flex flex-wrap gap-2">
+                                            {madarsa.academic?.classes?.length ? (
+                                                madarsa.academic.classes.map((cls: string, i: number) => (
+                                                    <Badge key={i} variant="secondary" className="px-4 py-2 rounded-xl text-sm font-bold bg-primary/5 text-primary border-primary/10">
+                                                        {cls}
+                                                    </Badge>
+                                                ))
+                                            ) : (
+                                                <p className="text-sm text-muted-foreground italic">No classes listed.</p>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <Button onClick={() => setIsEditModalOpen(true)} variant="outline" className="w-full h-12 rounded-xl font-bold">
+                                        Update Academic Info
                                     </Button>
                                 </CardContent>
                             </Card>

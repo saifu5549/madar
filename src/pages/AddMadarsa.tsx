@@ -621,6 +621,24 @@ const AddMadarsa = () => {
                                                             return;
                                                         }
 
+                                                        if (!navigator.geolocation) {
+                                                            toast({
+                                                                title: "Not Supported",
+                                                                description: "Geolocation is not supported by your browser.",
+                                                                variant: "destructive",
+                                                            });
+                                                            return;
+                                                        }
+
+                                                        // Check for Secure Context (required for geolocation in most mobile browsers)
+                                                        if (!window.isSecureContext) {
+                                                            toast({
+                                                                title: "Insecure Connection",
+                                                                description: "Location detection requires an HTTPS connection for security on mobile devices.",
+                                                                variant: "destructive",
+                                                            });
+                                                        }
+
                                                         setLoading(true);
                                                         navigator.geolocation.getCurrentPosition(async (position) => {
                                                             try {
@@ -631,31 +649,43 @@ const AddMadarsa = () => {
                                                                 const data = await response.json();
                                                                 const addr = data.address;
 
-                                                                // Construct address string
-                                                                const fullAddress = [
+                                                                // 1. Construct more robust address string
+                                                                const addressParts = [
                                                                     addr.road,
                                                                     addr.suburb,
                                                                     addr.neighbourhood,
-                                                                    addr.city_district
-                                                                ].filter(Boolean).join(", ");
+                                                                    addr.city_district,
+                                                                    addr.village,
+                                                                    addr.hamlet
+                                                                ].filter(Boolean);
 
-                                                                // Update form fields
+                                                                const fullAddress = addressParts.length > 0
+                                                                    ? addressParts.join(", ")
+                                                                    : data.display_name?.split(',').slice(0, 3).join(', ');
+
+                                                                // 2. Clear then update form fields
                                                                 if (fullAddress) form1.setValue("address", fullAddress);
-                                                                if (addr.city || addr.town || addr.village) {
-                                                                    form1.setValue("city", addr.city || addr.town || addr.village);
-                                                                }
+
+                                                                // Detect City
+                                                                const city = addr.city || addr.town || addr.village || addr.municipality || addr.county;
+                                                                if (city) form1.setValue("city", city);
+
+                                                                // Detect State (with fuzzy matching)
                                                                 if (addr.state) {
-                                                                    // Try to match state with our dropdown list
+                                                                    const normalizedApiState = addr.state.toLowerCase();
                                                                     const matchedState = INDIAN_STATES.find(s =>
-                                                                        s.toLowerCase() === addr.state.toLowerCase()
+                                                                        normalizedApiState.includes(s.toLowerCase()) ||
+                                                                        s.toLowerCase().includes(normalizedApiState)
                                                                     );
                                                                     if (matchedState) form1.setValue("state", matchedState);
                                                                 }
+
+                                                                // Detect Pincode
                                                                 if (addr.postcode) form1.setValue("pincode", addr.postcode);
 
                                                                 toast({
-                                                                    title: "Location Detected",
-                                                                    description: "Address details auto-filled from your location",
+                                                                    title: "Location Detected ✅",
+                                                                    description: "Address details filled successfully!",
                                                                 });
                                                             } catch (error) {
                                                                 console.error("Geocoding error:", error);
@@ -669,12 +699,24 @@ const AddMadarsa = () => {
                                                             }
                                                         }, (error) => {
                                                             console.error("Geolocation error:", error);
+                                                            let errorMsg = "Please enable location access to use this feature";
+
+                                                            if (error.code === 3) {
+                                                                errorMsg = "Location request timed out. Please try again in an open area.";
+                                                            } else if (error.code === 1) {
+                                                                errorMsg = "Location permission denied. Click the 'Lock' icon next to the URL above and select 'Allow' for Location.";
+                                                            }
+
                                                             toast({
                                                                 title: "Location Error",
-                                                                description: "Please enable location access to use this feature",
+                                                                description: errorMsg,
                                                                 variant: "destructive",
                                                             });
                                                             setLoading(false);
+                                                        }, {
+                                                            enableHighAccuracy: true,
+                                                            timeout: 15000,
+                                                            maximumAge: 0
                                                         });
                                                     }}
                                                     disabled={loading}

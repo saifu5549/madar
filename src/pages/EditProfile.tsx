@@ -7,8 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea"; // Need to ensure this exists or use standard textarea
+// Need to ensure this exists or use standard textarea
 import { ArrowLeft, Save, Loader2, Building2, MapPin, Phone, FileText } from "lucide-react";
 
 // Fallback if Textarea component doesn't exist, use standard textarea with class

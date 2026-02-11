@@ -2,9 +2,8 @@ import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { db, storage } from "@/lib/firebase";
+import { db } from "@/lib/firebase";
 import { doc, updateDoc } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useToast } from "@/hooks/use-toast";
 import {
     Dialog,
@@ -33,6 +32,10 @@ const profileSchema = z.object({
     email: z.string().email("Valid email required"),
     website: z.string().optional(),
     mohatmimName: z.string().min(3, "Mohatmim name required"),
+    // Academic fields
+    totalStudents: z.string().regex(/^\d+$/, "Number required"),
+    teachers: z.string().regex(/^\d+$/, "Number required"),
+    staff: z.string().regex(/^\d+$/, "Number required"),
 });
 
 type ProfileData = z.infer<typeof profileSchema>;
@@ -48,13 +51,23 @@ interface EditMadarsaModalProps {
 export function EditMadarsaModal({ madarsa, isOpen, onClose, onUpdate, defaultTab = "basic" }: EditMadarsaModalProps) {
     const { toast } = useToast();
     const [loading, setLoading] = useState(false);
-    const [logoFile, setLogoFile] = useState<File | null>(null);
-    const [coverFile, setCoverFile] = useState<File | null>(null);
     const [logoPreview, setLogoPreview] = useState<string | null>(madarsa?.media?.logo || null);
     const [coverPreview, setCoverPreview] = useState<string | null>(madarsa?.media?.coverPhoto || null);
 
     // Facilities state
     const [facilities, setFacilities] = useState<Record<string, boolean>>(madarsa?.facilities || {});
+    const [selectedClasses, setSelectedClasses] = useState<string[]>(madarsa?.academic?.classes || []);
+
+    const CLASSES_OFFERED = [
+        { id: "hifz", label: "हिफ्ज़ (Hifz)" },
+        { id: "nazra", label: "नाज़रा (Nazra)" },
+        { id: "dars-e-nizami", label: "दर्स-ए-निज़ामी (Dars-e-Nizami)" },
+        { id: "alim", label: "आलिम (Alim Course)" },
+        { id: "maulvi", label: "मौलवी (Maulvi Course)" },
+        { id: "fazilat", label: "फज़ीलत (Fazilat)" },
+        { id: "takhassus", label: "तखस्सुस (Takhassus)" },
+        { id: "school", label: "School Education (NIOS/Board)" },
+    ];
 
     const form = useForm<ProfileData>({
         resolver: zodResolver(profileSchema),
@@ -69,6 +82,9 @@ export function EditMadarsaModal({ madarsa, isOpen, onClose, onUpdate, defaultTa
             email: madarsa?.contact?.email || "",
             website: madarsa?.contact?.website || "",
             mohatmimName: madarsa?.mohatmim?.name || "",
+            totalStudents: madarsa?.academic?.totalStudents?.toString() || "0",
+            teachers: madarsa?.academic?.teachers?.toString() || "0",
+            staff: madarsa?.academic?.staff?.toString() || "0",
         }
     });
 
@@ -86,17 +102,20 @@ export function EditMadarsaModal({ madarsa, isOpen, onClose, onUpdate, defaultTa
                 email: madarsa.contact?.email || "",
                 website: madarsa.contact?.website || "",
                 mohatmimName: madarsa.mohatmim?.name || "",
+                totalStudents: madarsa.academic?.totalStudents?.toString() || "0",
+                teachers: madarsa.academic?.teachers?.toString() || "0",
+                staff: madarsa.academic?.staff?.toString() || "0",
             });
             setLogoPreview(madarsa.media?.logo || null);
             setCoverPreview(madarsa.media?.coverPhoto || null);
             setFacilities(madarsa.facilities || {});
+            setSelectedClasses(madarsa.academic?.classes || []);
         }
     }, [madarsa, form]);
 
     const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
-            setLogoFile(file);
             const reader = new FileReader();
             reader.onloadend = () => {
                 setLogoPreview(reader.result as string);
@@ -108,7 +127,6 @@ export function EditMadarsaModal({ madarsa, isOpen, onClose, onUpdate, defaultTa
     const handleCoverChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
-            setCoverFile(file);
             const reader = new FileReader();
             reader.onloadend = () => {
                 setCoverPreview(reader.result as string);
@@ -121,25 +139,17 @@ export function EditMadarsaModal({ madarsa, isOpen, onClose, onUpdate, defaultTa
         setFacilities(prev => ({ ...prev, [key]: checked }));
     };
 
+    const handleClassToggle = (id: string) => {
+        setSelectedClasses(prev =>
+            prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]
+        );
+    };
+
     const onSubmit = async (data: ProfileData) => {
         setLoading(true);
         try {
-            let logoUrl = madarsa.media?.logo || "";
-            let coverUrl = madarsa.media?.coverPhoto || "";
-
-            // Upload Logo
-            if (logoFile) {
-                const logoRef = ref(storage, `madarsa-images/${madarsa.id}/logo_${Date.now()}`);
-                await uploadBytes(logoRef, logoFile);
-                logoUrl = await getDownloadURL(logoRef);
-            }
-
-            // Upload Cover
-            if (coverFile) {
-                const coverRef = ref(storage, `madarsa-images/${madarsa.id}/cover_${Date.now()}`);
-                await uploadBytes(coverRef, coverFile);
-                coverUrl = await getDownloadURL(coverRef);
-            }
+            let logoUrl = logoPreview;
+            let coverUrl = coverPreview;
 
             // Update Firestore
             const madarsaRef = doc(db, "madarsas", madarsa.id);
@@ -157,6 +167,10 @@ export function EditMadarsaModal({ madarsa, isOpen, onClose, onUpdate, defaultTa
                 "media.logo": logoUrl,
                 "media.coverPhoto": coverUrl,
                 "facilities": facilities,
+                "academic.totalStudents": parseInt(data.totalStudents),
+                "academic.teachers": parseInt(data.teachers),
+                "academic.staff": parseInt(data.staff),
+                "academic.classes": selectedClasses,
                 "meta.updatedAt": Date.now()
             });
 
@@ -209,6 +223,7 @@ export function EditMadarsaModal({ madarsa, isOpen, onClose, onUpdate, defaultTa
                             <TabsList className="mb-4 flex-wrap h-auto">
                                 <TabsTrigger value="basic">Basic Info</TabsTrigger>
                                 <TabsTrigger value="media">Media & Images</TabsTrigger>
+                                <TabsTrigger value="academics">Academics</TabsTrigger>
                                 <TabsTrigger value="contact">Contact & Location</TabsTrigger>
                                 <TabsTrigger value="facilities">Facilities</TabsTrigger>
                             </TabsList>
@@ -309,6 +324,42 @@ export function EditMadarsaModal({ madarsa, isOpen, onClose, onUpdate, defaultTa
                                         className="hidden"
                                         onChange={handleCoverChange}
                                     />
+                                </div>
+                            </TabsContent>
+
+                            {/* Academics Tab */}
+                            <TabsContent value="academics" className="space-y-6">
+                                <div className="grid md:grid-cols-3 gap-6">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="totalStudents">Total Students</Label>
+                                        <Input type="number" {...form.register("totalStudents")} />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="teachers">Total Teachers</Label>
+                                        <Input type="number" {...form.register("teachers")} />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="staff">Support Staff</Label>
+                                        <Input type="number" {...form.register("staff")} />
+                                    </div>
+                                </div>
+
+                                <div className="space-y-4">
+                                    <Label>Classes Offered</Label>
+                                    <div className="grid grid-cols-2 gap-3 border rounded-xl p-4 bg-muted/20">
+                                        {CLASSES_OFFERED.map((cls) => (
+                                            <div key={cls.id} className="flex items-center space-x-2">
+                                                <Checkbox
+                                                    id={`edit-class-${cls.id}`}
+                                                    checked={selectedClasses.includes(cls.id)}
+                                                    onCheckedChange={() => handleClassToggle(cls.id)}
+                                                />
+                                                <label htmlFor={`edit-class-${cls.id}`} className="text-sm font-medium leading-none cursor-pointer">
+                                                    {cls.label}
+                                                </label>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
                             </TabsContent>
 

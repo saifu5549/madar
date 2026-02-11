@@ -8,7 +8,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { indianStates } from "@/data/mockMadarsas";
+import { indianStates } from "@/constants/indianStates";
 
 interface SearchFiltersProps {
   searchQuery: string;

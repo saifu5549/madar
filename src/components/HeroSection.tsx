@@ -3,7 +3,15 @@ import { Button } from "@/components/ui/button";
 import { Plus, Search, BookOpen, Users, School } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-const HeroSection = () => {
+interface HeroSectionProps {
+  stats?: {
+    madarsas: number;
+    students: number;
+    teachers: number;
+  };
+}
+
+const HeroSection = ({ stats }: HeroSectionProps) => {
   const { t } = useTranslation();
   return (
     <section className="relative hero-gradient geometric-pattern overflow-hidden">
@@ -64,7 +72,9 @@ const HeroSection = () => {
                   <School className="w-6 h-6 text-primary" />
                 </div>
               </div>
-              <p className="font-display text-2xl md:text-3xl font-bold text-foreground">500+</p>
+              <p className="font-display text-2xl md:text-3xl font-bold text-foreground">
+                {stats?.madarsas || 0}+
+              </p>
               <p className="text-sm text-muted-foreground">{t('hero.statsCountMadarsas')}</p>
             </div>
             <div className="text-center">
@@ -73,7 +83,9 @@ const HeroSection = () => {
                   <BookOpen className="w-6 h-6 text-secondary" />
                 </div>
               </div>
-              <p className="font-display text-2xl md:text-3xl font-bold text-foreground">50K+</p>
+              <p className="font-display text-2xl md:text-3xl font-bold text-foreground">
+                {stats?.students || 0}+
+              </p>
               <p className="text-sm text-muted-foreground">{t('hero.statsCountStudents')}</p>
             </div>
             <div className="text-center">
@@ -82,7 +94,9 @@ const HeroSection = () => {
                   <Users className="w-6 h-6 text-primary" />
                 </div>
               </div>
-              <p className="font-display text-2xl md:text-3xl font-bold text-foreground">5K+</p>
+              <p className="font-display text-2xl md:text-3xl font-bold text-foreground">
+                {stats?.teachers || 0}+
+              </p>
               <p className="text-sm text-muted-foreground">{t('hero.statsCountTeachers')}</p>
             </div>
           </div>

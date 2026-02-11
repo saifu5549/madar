@@ -1,47 +1,72 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import HeroSection from "@/components/HeroSection";
 import SearchFilters from "@/components/SearchFilters";
 import MadarsaCard from "@/components/MadarsaCard";
-import { mockMadarsas } from "@/data/mockMadarsas";
-import { ArrowRight, Building2, GraduationCap, Users } from "lucide-react";
+import { ArrowRight, Building2, GraduationCap, Users, Loader2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useTranslation } from "react-i18next";
+import { db } from "@/lib/firebase";
+import { collection, onSnapshot, query } from "firebase/firestore";
+import { Madarsa } from "@/types/madarsa";
 
 const Index = () => {
   const { t } = useTranslation();
+  const [madarsas, setMadarsas] = useState<Madarsa[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedState, setSelectedState] = useState("");
   const [selectedCity, setSelectedCity] = useState("");
 
+  useEffect(() => {
+    const q = query(collection(db, "madarsas"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Madarsa[];
+      setMadarsas(data);
+      setLoading(false);
+    }, (error) => {
+      console.error("Error fetching madarsas:", error);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
   // Get unique cities based on selected state
   const cities = useMemo(() => {
     if (!selectedState || selectedState === "all") return [];
-    const stateMadarsas = mockMadarsas.filter((m) => m.state === selectedState);
-    return [...new Set(stateMadarsas.map((m) => m.city))];
-  }, [selectedState]);
+    const stateMadarsas = madarsas.filter((m) => (m.location?.state || m.state) === selectedState);
+    return [...new Set(stateMadarsas.map((m) => m.location?.city || m.city))].filter(Boolean) as string[];
+  }, [selectedState, madarsas]);
 
   // Filter madarsas
   const filteredMadarsas = useMemo(() => {
-    return mockMadarsas.filter((madarsa) => {
+    return madarsas.filter((madarsa) => {
+      const name = madarsa.basicInfo?.nameEnglish || madarsa.name || "";
+      const city = madarsa.location?.city || madarsa.city || "";
+      const state = madarsa.location?.state || madarsa.state || "";
+
       const matchesSearch =
         searchQuery === "" ||
-        madarsa.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        madarsa.city.toLowerCase().includes(searchQuery.toLowerCase());
+        name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        city.toLowerCase().includes(searchQuery.toLowerCase());
 
       const matchesState =
-        !selectedState || selectedState === "all" || madarsa.state === selectedState;
+        !selectedState || selectedState === "all" || state === selectedState;
 
       const matchesCity =
-        !selectedCity || selectedCity === "all" || madarsa.city === selectedCity;
+        !selectedCity || selectedCity === "all" || city === selectedCity;
 
       return matchesSearch && matchesState && matchesCity;
     });
-  }, [searchQuery, selectedState, selectedCity]);
+  }, [searchQuery, selectedState, selectedCity, madarsas]);
 
-  const hasActiveFilters = searchQuery !== "" || (selectedState && selectedState !== "all");
+  const hasActiveFilters = searchQuery !== "" || !!(selectedState && selectedState !== "all");
 
   const clearFilters = () => {
     setSearchQuery("");
@@ -49,8 +74,31 @@ const Index = () => {
     setSelectedCity("");
   };
 
+  // Calculate live stats for Hero section
+  const stats = useMemo(() => {
+    return madarsas.reduce((acc, m) => ({
+      madarsas: acc.madarsas + 1,
+      students: acc.students + (m.academic?.totalStudents || m.totalStudents || 0),
+      teachers: acc.teachers + (m.academic?.teachers || m.totalTeachers || 0),
+    }), { madarsas: 0, students: 0, teachers: 0 });
+  }, [madarsas]);
+
   // Featured madarsas (verified ones)
-  const featuredMadarsas = filteredMadarsas.filter((m) => m.isVerified).slice(0, 6);
+  const featuredMadarsas = useMemo(() => {
+    return filteredMadarsas.filter((m) => m.meta?.status === 'verified' || m.meta?.status === undefined).slice(0, 6);
+  }, [filteredMadarsas]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex flex-col bg-background">
+        <Header />
+        <div className="flex-grow flex items-center justify-center">
+          <Loader2 className="w-10 h-10 animate-spin text-primary" />
+        </div>
+        <Footer />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -58,7 +106,7 @@ const Index = () => {
 
       <main className="flex-grow">
         {/* Hero Section */}
-        <HeroSection />
+        <HeroSection stats={stats} />
 
         {/* Features Section - User Roles */}
         <section className="py-16 md:py-20 bg-accent/30">
@@ -248,7 +296,7 @@ const Index = () => {
             {/* Madarsa Cards Grid */}
             {filteredMadarsas.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {featuredMadarsas.map((madarsa, index) => (
+                {featuredMadarsas.map((madarsa: Madarsa, index: number) => (
                   <MadarsaCard key={madarsa.id} madarsa={madarsa} index={index} />
                 ))}
               </div>

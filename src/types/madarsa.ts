@@ -1,23 +1,41 @@
 export interface Madarsa {
   id: string;
-  name: string;
-  address: string;
-  city: string;
-  district: string;
-  state: string;
-  contactNumber?: string;
-  email?: string;
-  establishedYear?: number;
-  totalStudents: number;
-  totalTeachers: number;
-  totalStaff: number;
-  classes: string[];
-  description?: string;
-  logoUrl?: string;
-  images?: string[];
-  isVerified: boolean;
-  createdAt: Date;
-  updatedAt: Date;
+  name?: string; // Legacy fallback
+  city?: string; // Legacy fallback
+  state?: string; // Legacy fallback
+  totalStudents?: number; // Legacy fallback
+  totalTeachers?: number; // Legacy fallback
+  classes?: string[]; // Legacy fallback
+  basicInfo?: {
+    nameEnglish: string;
+    established: string;
+  };
+  location?: {
+    address: string;
+    city: string;
+    state: string;
+  };
+  academic?: {
+    totalStudents: number;
+    teachers: number;
+    staff: number;
+    classes: string[];
+  };
+  media?: {
+    logo?: string;
+    coverPhoto?: string;
+  };
+  meta?: {
+    status: 'pending' | 'verified' | 'rejected';
+    createdBy: string;
+    updatedAt: number;
+  };
+  description?: {
+    about: string;
+  };
+  facilities?: Record<string, boolean>;
+  createdAt: any;
+  updatedAt: any;
 }
 
 export interface Teacher {
